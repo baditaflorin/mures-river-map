@@ -318,6 +318,18 @@ h2 {
   stroke-width: 2;
 }
 
+.elevation-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.elevation-point:hover circle,
+.elevation-point:focus-visible circle {
+  fill: var(--mures);
+  stroke: #053d47;
+  stroke-width: 3;
+}
+
 .elevation-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

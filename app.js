@@ -44,6 +44,7 @@
   };
 
   let routeBounds = L.latLngBounds([]);
+  let journeyMarkers = [];
   let catalogItems = [];
   let catalogMarkers = new Map();
   let catalogMode = "direct";
@@ -242,6 +243,7 @@
       );
 
       marker.addTo(groups.places);
+      journeyMarkers[index] = marker;
       routeBounds.extend(stop.coords);
     });
 
@@ -268,10 +270,10 @@
     const plotWidth = width - pad.left - pad.right;
     const plotHeight = height - pad.top - pad.bottom;
 
-    const points = stops.map((stop) => {
+    const points = stops.map((stop, index) => {
       const x = pad.left + (stop.km / maxKm) * plotWidth;
       const y = pad.top + ((maxElevation - stop.elevationM) / range) * plotHeight;
-      return { ...stop, x, y };
+      return { ...stop, index, x, y };
     });
 
     const linePath = points
@@ -294,7 +296,13 @@
     const markers = points
       .map(
         (point) => `
-          <g class="elevation-point">
+          <g
+            class="elevation-point"
+            data-stop-index="${point.index}"
+            tabindex="0"
+            role="button"
+            aria-label="Go to ${escapeHtml(point.name)}, ${meters(point.elevationM)} elevation"
+          >
             <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4"></circle>
             <title>${escapeHtml(point.name)} · ${meters(point.elevationM)} · ${km(point.km)}</title>
           </g>
@@ -382,6 +390,20 @@
       loadOnlineLayers(true);
     });
 
+    els.elevationProfile.addEventListener("click", (event) => {
+      const point = event.target.closest(".elevation-point");
+      if (!point) return;
+      focusJourneyStop(Number(point.dataset.stopIndex));
+    });
+
+    els.elevationProfile.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const point = event.target.closest(".elevation-point");
+      if (!point) return;
+      event.preventDefault();
+      focusJourneyStop(Number(point.dataset.stopIndex));
+    });
+
     document.querySelectorAll("[data-layer]").forEach((input) => {
       input.addEventListener("change", () => {
         const layer = groups[input.dataset.layer];
@@ -443,6 +465,25 @@
       layer.addTo(map);
     } else {
       map.removeLayer(layer);
+    }
+  }
+
+  function focusJourneyStop(index) {
+    const stop = DATA.journeyStops[index];
+    const marker = journeyMarkers[index];
+    if (!stop || !marker) return;
+
+    map.setView(stop.coords, 11, {
+      animate: true
+    });
+    marker.openPopup();
+
+    const mapArea = document.querySelector(".map-area");
+    if (mapArea && window.matchMedia("(max-width: 980px)").matches) {
+      mapArea.scrollIntoView({
+        behavior: "auto",
+        block: "start"
+      });
     }
   }
 
