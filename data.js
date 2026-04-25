@@ -157,7 +157,7 @@ window.MuresData = {
       lengthKm: 221,
       side: "left bank via Târnava",
       mouth: "joins Târnava near Blaj",
-      qid: "Q2448871",
+      qid: "Q1187720",
       points: [
         [46.405, 25.300],
         [46.255, 24.890],
@@ -168,10 +168,10 @@ window.MuresData = {
     },
     {
       name: "Târnava Mică",
-      lengthKm: 196,
+      lengthKm: 191,
       side: "left bank via Târnava",
       mouth: "joins Târnava near Blaj",
-      qid: "Q2448876",
+      qid: "Q953364",
       points: [
         [46.555, 25.065],
         [46.428, 24.688],
@@ -210,7 +210,7 @@ window.MuresData = {
       lengthKm: 96,
       side: "left bank",
       mouth: "near Oarda / Alba Iulia",
-      qid: "Q831905",
+      qid: "Q1286596",
       points: [
         [45.570, 23.560],
         [45.750, 23.585],
@@ -223,7 +223,7 @@ window.MuresData = {
       lengthKm: 82,
       side: "left bank",
       mouth: "near Ungheni",
-      qid: "Q1468823",
+      qid: "Q724199",
       points: [
         [46.538, 25.110],
         [46.475, 24.840],
@@ -262,7 +262,7 @@ window.MuresData = {
       lengthKm: 53,
       side: "left bank",
       mouth: "Reghin",
-      qid: "Q562495",
+      qid: "Q506890",
       points: [
         [46.872, 25.050],
         [46.812, 24.905],
@@ -272,10 +272,10 @@ window.MuresData = {
     },
     {
       name: "Cugir",
-      lengthKm: 54,
+      lengthKm: 61,
       side: "left bank",
       mouth: "near Șibot",
-      qid: "Q3003076",
+      qid: "Q5192665",
       points: [
         [45.675, 23.435],
         [45.814, 23.360],
@@ -287,7 +287,7 @@ window.MuresData = {
       lengthKm: 48,
       side: "left bank",
       mouth: "near Geoagiu",
-      qid: "Q3756673",
+      qid: "Q3297006",
       points: [
         [45.835, 23.225],
         [45.915, 23.175],

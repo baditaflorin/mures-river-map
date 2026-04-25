@@ -45,6 +45,7 @@
 
   let routeBounds = L.latLngBounds([]);
   let journeyMarkers = [];
+  let majorTributaryBounds = new Map();
   let catalogItems = [];
   let catalogMarkers = new Map();
   let catalogMode = "direct";
@@ -179,25 +180,7 @@
       "Danube reach around the Tisza confluence"
     );
 
-    DATA.majorTributaries.forEach((river) => {
-      const line = addPolyline(
-        groups.tributaries,
-        river.points,
-        {
-          color: "#3f8f54",
-          weight: Math.max(3, Math.min(6, river.lengthKm / 42)),
-          opacity: 0.82,
-          lineCap: "round",
-          lineJoin: "round"
-        },
-        river.name,
-        `${km(river.lengthKm)} · ${river.side} · ${river.mouth}`
-      );
-      line.on("mouseover", () => line.setStyle({ weight: 7, opacity: 1 }));
-      line.on("mouseout", () =>
-        line.setStyle({ weight: Math.max(3, Math.min(6, river.lengthKm / 42)), opacity: 0.82 })
-      );
-    });
+    drawFallbackTributaries();
 
     renderJourneyStops();
     renderTributaries();
@@ -355,6 +338,39 @@
     els.tributaryCount.textContent = `${DATA.majorTributaries.length} shown`;
   }
 
+  function drawFallbackTributaries() {
+    groups.tributaries.clearLayers();
+    majorTributaryBounds = new Map();
+    DATA.majorTributaries.forEach((river) => addFallbackTributary(river));
+  }
+
+  function addFallbackTributary(river, muted = false) {
+    const style = tributaryLineStyle(river, muted);
+    const line = addPolyline(
+      groups.tributaries,
+      river.points,
+      style,
+      river.name,
+      `${km(river.lengthKm)} · ${river.side} · ${river.mouth} · fallback geometry`
+    );
+    const bounds = L.latLngBounds(river.points);
+    majorTributaryBounds.set(river.name, bounds);
+    line.on("mouseover", () => line.setStyle({ weight: style.weight + 2, opacity: 1 }));
+    line.on("mouseout", () => line.setStyle(style));
+    return bounds;
+  }
+
+  function tributaryLineStyle(river, muted = false) {
+    return {
+      color: muted ? "#789879" : "#2f8a5b",
+      weight: Math.max(3, Math.min(6, river.lengthKm / 42)),
+      opacity: muted ? 0.58 : 0.86,
+      lineCap: "round",
+      lineJoin: "round",
+      dashArray: muted ? "6 5" : null
+    };
+  }
+
   function updateLengthSummary() {
     const simplifiedMainKm = lineLengthKm(DATA.routeSegments.mures.points);
     const simplifiedTiszaKm = lineLengthKm(DATA.routeSegments.tisza.points);
@@ -422,7 +438,8 @@
       const river = DATA.majorTributaries.find((item) => item.name === button.dataset.tributary);
       if (!river) return;
 
-      map.fitBounds(L.latLngBounds(river.points).pad(0.25));
+      const bounds = majorTributaryBounds.get(river.name) || L.latLngBounds(river.points);
+      map.fitBounds(bounds.pad(0.25));
     });
 
     els.catalogList.addEventListener("click", (event) => {
@@ -814,10 +831,92 @@
     els.osmStatus.textContent = `OSM Mureș geometry: ${ways.length} segments, ${km(osmKm)}`;
   }
 
+  async function loadOsmMajorTributaryGeometry() {
+    const qids = DATA.majorTributaries.map((river) => river.qid).filter(Boolean).join("|");
+    const query = `
+      [out:json][timeout:90];
+      relation["waterway"="river"]["wikidata"~"^(${qids})$"];
+      out body;
+      way(r);
+      out geom;
+    `;
+    const response = await fetch(`${OVERPASS_ENDPOINT}?data=${encodeURIComponent(query)}`);
+
+    if (!response.ok) {
+      throw new Error(`Overpass tributary request failed with ${response.status}`);
+    }
+
+    const data = await response.json();
+    const relations = data.elements.filter((element) => element.type === "relation");
+    const waysById = new Map(
+      data.elements
+        .filter((element) => element.type === "way" && element.geometry)
+        .map((way) => [way.id, way])
+    );
+    const relationByQid = new Map(
+      relations
+        .filter((relation) => relation.tags?.wikidata)
+        .map((relation) => [relation.tags.wikidata, relation])
+    );
+
+    groups.tributaries.clearLayers();
+    majorTributaryBounds = new Map();
+
+    let loaded = 0;
+    let fallback = 0;
+    let segmentCount = 0;
+    let osmKm = 0;
+
+    DATA.majorTributaries.forEach((river) => {
+      const relation = relationByQid.get(river.qid);
+      const memberIds = relation?.members
+        ?.filter((member) => member.type === "way")
+        .map((member) => member.ref);
+      const wayGeometries = (memberIds || [])
+        .map((id) => waysById.get(id))
+        .filter((way) => way?.geometry?.length > 1)
+        .map((way) => ({
+          id: way.id,
+          points: way.geometry.map((point) => [point.lat, point.lon])
+        }));
+
+      if (!relation || !wayGeometries.length) {
+        addFallbackTributary(river, true);
+        fallback += 1;
+        return;
+      }
+
+      const bounds = L.latLngBounds([]);
+      const style = tributaryLineStyle(river);
+      const geometryKm = wayGeometries.reduce((total, way) => total + lineLengthKm(way.points), 0);
+      wayGeometries.forEach((way) => {
+        const line = L.polyline(way.points, style).bindPopup(
+          popup(
+            river.name,
+            `${km(river.lengthKm)} catalog length · ${km(geometryKm)} OSM geometry · relation ${relation.id}`
+          )
+        );
+        line.on("mouseover", () => line.setStyle({ weight: style.weight + 2, opacity: 1 }));
+        line.on("mouseout", () => line.setStyle(style));
+        line.addTo(groups.tributaries);
+        bounds.extend(line.getBounds());
+      });
+
+      majorTributaryBounds.set(river.name, bounds);
+      loaded += 1;
+      segmentCount += wayGeometries.length;
+      osmKm += geometryKm;
+    });
+
+    els.tributaryCount.textContent = `${loaded} OSM / ${fallback} fallback`;
+    els.lengthStatus.textContent = `Major tributaries: ${loaded} OSM relations, ${segmentCount} segments, ${km(osmKm)}`;
+  }
+
   async function loadOnlineLayers(force = false) {
     if (force) {
       groups.osm.clearLayers();
       groups.catalog.clearLayers();
+      drawFallbackTributaries();
       catalogItems = [];
       catalogMarkers = new Map();
       catalogCache = {
@@ -831,7 +930,11 @@
     els.osmStatus.textContent = "Loading OSM geometry";
     els.catalogStatus.textContent = catalogModeStatus(catalogMode);
 
-    const outcomes = await Promise.allSettled([loadOsmMuresGeometry(), loadWikidataCatalog(catalogMode, force)]);
+    const outcomes = await Promise.allSettled([
+      loadOsmMuresGeometry(),
+      loadOsmMajorTributaryGeometry(),
+      loadWikidataCatalog(catalogMode, force)
+    ]);
     const failed = outcomes.filter((item) => item.status === "rejected");
 
     if (failed.length === outcomes.length) {

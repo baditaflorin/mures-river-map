@@ -8,6 +8,7 @@ Interactive online map for the Mureș River, its direct tributaries, and the dow
 - Source-to-mouth route from Izvoru Mureșului to the Mureș-Tisza confluence near Szeged.
 - Downstream continuation along the Tisza to the Danube confluence near Titel.
 - Curated major tributary layer with lengths, bank side, and mouth locations.
+- Live OpenStreetMap relation geometry for major tributaries, with curated fallback lines when OSM relation geometry is missing.
 - Elevation values and a clickable profile chart for the main source-to-Danube journey stops.
 - Live OpenStreetMap geometry overlay for the Mureș river relation.
 - Live Wikidata catalog of direct tributaries whose mouth is the Mureș.
