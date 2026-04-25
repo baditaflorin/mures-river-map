@@ -2,6 +2,7 @@
   const DATA = window.MuresData;
   const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
   const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
+  const MAJOR_TRIBUTARY_KM = 50;
 
   const map = L.map("map", {
     zoomControl: false,
@@ -45,13 +46,20 @@
   let routeBounds = L.latLngBounds([]);
   let catalogItems = [];
   let catalogMarkers = new Map();
+  let catalogMode = "direct";
+  let catalogCache = {
+    direct: null,
+    basin: null
+  };
 
   const els = {
     networkStatus: document.getElementById("networkStatus"),
     osmStatus: document.getElementById("osmStatus"),
     lengthStatus: document.getElementById("lengthStatus"),
+    catalogTitle: document.getElementById("catalogTitle"),
     catalogStatus: document.getElementById("catalogStatus"),
     catalogCount: document.getElementById("catalogCount"),
+    catalogMetricLabel: document.getElementById("catalogMetricLabel"),
     totalLength: document.getElementById("totalLength"),
     muresLength: document.getElementById("muresLength"),
     journeyList: document.getElementById("journeyList"),
@@ -61,6 +69,8 @@
     elevationSummary: document.getElementById("elevationSummary"),
     tributaryList: document.getElementById("tributaryList"),
     tributaryCount: document.getElementById("tributaryCount"),
+    basinMode: document.getElementById("basinMode"),
+    basinSummary: document.getElementById("basinSummary"),
     catalogList: document.getElementById("catalogList"),
     catalogSearch: document.getElementById("catalogSearch")
   };
@@ -406,6 +416,26 @@
     });
 
     els.catalogSearch.addEventListener("input", () => renderCatalogList());
+
+    els.basinMode.addEventListener("change", () => {
+      catalogMode = els.basinMode.checked ? "basin" : "direct";
+      els.catalogTitle.textContent = catalogModeTitle(catalogMode);
+      els.catalogStatus.textContent = catalogModeStatus(catalogMode);
+      els.catalogList.innerHTML = loadingCatalogRow(catalogMode);
+
+      loadWikidataCatalog(catalogMode).catch((error) => {
+        console.warn(error);
+        els.catalogStatus.textContent = "load failed";
+        els.catalogList.innerHTML = `
+          <article class="catalog-row is-empty">
+            <span>
+              <strong>Could not load ${escapeHtml(catalogModeTitle(catalogMode).toLocaleLowerCase())}</strong>
+              <span>Reload the online data and try again.</span>
+            </span>
+          </article>
+        `;
+      });
+    });
   }
 
   function setLayerVisible(layer, visible) {
@@ -427,16 +457,48 @@
     return uri.split("/").pop();
   }
 
-  async function loadWikidataCatalog() {
-    const query = `
-      SELECT ?river ?riverLabel ?length ?coord WHERE {
-        ?river wdt:P403 wd:${DATA.metadata.muresWikidata}.
+  function catalogModeTitle(mode) {
+    return mode === "basin" ? "Complete Basin" : "Direct Tributaries";
+  }
+
+  function catalogModeStatus(mode) {
+    return mode === "basin" ? "Loading basin" : "Loading direct";
+  }
+
+  function catalogQuery(mode) {
+    const riverClause =
+      mode === "basin"
+        ? `
+          ?river wdt:P403+ wd:${DATA.metadata.muresWikidata}.
+          OPTIONAL { ?river wdt:P403 ?mouth. }
+          BIND(EXISTS { ?river wdt:P403 wd:${DATA.metadata.muresWikidata} } AS ?direct)
+        `
+        : `
+          ?river wdt:P403 wd:${DATA.metadata.muresWikidata}.
+          BIND(wd:${DATA.metadata.muresWikidata} AS ?mouth)
+          BIND(true AS ?direct)
+        `;
+
+    return `
+      SELECT ?river ?riverLabel ?mouth ?mouthLabel ?length ?coord ?direct WHERE {
+        ${riverClause}
         OPTIONAL { ?river wdt:P2043 ?length. }
         OPTIONAL { ?river wdt:P625 ?coord. }
         SERVICE wikibase:label { bd:serviceParam wikibase:language "en,ro,hu". }
       }
-      ORDER BY ?riverLabel
+      ORDER BY DESC(?length) ?riverLabel
     `;
+  }
+
+  async function loadWikidataCatalog(mode = catalogMode, force = false) {
+    if (!force && catalogCache[mode]) {
+      if (mode === catalogMode) {
+        applyCatalog(catalogCache[mode], mode);
+      }
+      return;
+    }
+
+    const query = catalogQuery(mode);
 
     const url = `${WIKIDATA_ENDPOINT}?format=json&query=${encodeURIComponent(query)}`;
     const response = await fetch(url, {
@@ -450,38 +512,70 @@
     }
 
     const data = await response.json();
+    const items = parseCatalogBindings(data.results.bindings);
+
+    catalogCache[mode] = items;
+    if (mode === catalogMode) {
+      applyCatalog(items, mode);
+    }
+  }
+
+  function parseCatalogBindings(bindings) {
     const byQid = new Map();
 
-    data.results.bindings.forEach((binding) => {
+    bindings.forEach((binding) => {
       const qid = qidFromUri(binding.river.value);
       const label = binding.riverLabel?.value || qid;
       const lengthKm = binding.length ? Number(binding.length.value) : null;
       const coords = parseWktPoint(binding.coord?.value);
+      const direct = binding.direct?.value === "true";
+      const mouthName = binding.mouthLabel?.value;
+      const mouthQid = binding.mouth ? qidFromUri(binding.mouth.value) : null;
       const current = byQid.get(qid) || {
         qid,
         name: label,
         lengthKm: null,
-        coords: null
+        coords: null,
+        direct: false,
+        mouthQid: null,
+        mouthNames: new Set()
       };
 
       if (label && !label.startsWith("Q")) current.name = label;
-      if (Number.isFinite(lengthKm)) current.lengthKm = lengthKm;
+      if (Number.isFinite(lengthKm)) {
+        current.lengthKm = Math.max(current.lengthKm || 0, lengthKm);
+      }
       if (coords && !current.coords) current.coords = coords;
+      if (direct) current.direct = true;
+      if (mouthQid) current.mouthQid = mouthQid;
+      if (mouthName && !mouthName.startsWith("Q")) current.mouthNames.add(mouthName);
 
       byQid.set(qid, current);
     });
 
-    catalogItems = Array.from(byQid.values()).sort((a, b) => {
-      if (a.lengthKm && b.lengthKm) return b.lengthKm - a.lengthKm;
-      if (a.lengthKm) return -1;
-      if (b.lengthKm) return 1;
-      return a.name.localeCompare(b.name);
-    });
+    return Array.from(byQid.values())
+      .map((item) => ({
+        ...item,
+        mouthNames: Array.from(item.mouthNames)
+      }))
+      .sort(sortCatalogItems);
+  }
+
+  function sortCatalogItems(a, b) {
+    const aHasLength = Number.isFinite(a.lengthKm);
+    const bHasLength = Number.isFinite(b.lengthKm);
+    if (aHasLength && bHasLength) return b.lengthKm - a.lengthKm;
+    if (aHasLength) return -1;
+    if (bHasLength) return 1;
+    return a.name.localeCompare(b.name);
+  }
+
+  function applyCatalog(items, mode) {
+    catalogItems = items;
 
     drawCatalogMarkers();
     renderCatalogList();
-    els.catalogCount.textContent = catalogItems.length.toLocaleString("en-US");
-    els.catalogStatus.textContent = `${catalogItems.length} loaded`;
+    renderCatalogSummary(mode);
   }
 
   function drawCatalogMarkers() {
@@ -490,17 +584,21 @@
 
     catalogItems.forEach((item) => {
       if (!item.coords) return;
-      const radius = item.lengthKm ? Math.max(4, Math.min(10, 4 + item.lengthKm / 38)) : 4;
+      const rank = tributaryRank(item);
+      const style = markerStyle(rank);
+      const radius = Number.isFinite(item.lengthKm)
+        ? Math.max(3, Math.min(10, 3 + item.lengthKm / 35))
+        : 3;
       const marker = L.circleMarker(item.coords, {
         radius,
-        color: "#245f3a",
+        color: item.direct ? "#075d66" : style.stroke,
         weight: 1,
-        fillColor: "#6fba73",
-        fillOpacity: 0.68
+        fillColor: style.fill,
+        fillOpacity: 0.72
       }).bindPopup(
         popup(
           item.name,
-          `${item.lengthKm ? `${km(item.lengthKm)} · ` : ""}Direct tributary catalog · ${item.qid}`
+          `${catalogMetaText(item)} · ${item.qid}`
         )
       );
 
@@ -512,12 +610,19 @@
   function renderCatalogList() {
     const needle = els.catalogSearch.value.trim().toLocaleLowerCase();
     const visible = catalogItems
-      .filter((item) => item.name.toLocaleLowerCase().includes(needle))
-      .slice(0, 80);
+      .filter((item) => {
+        const mouthText = item.mouthNames.join(" ").toLocaleLowerCase();
+        return (
+          item.name.toLocaleLowerCase().includes(needle) ||
+          item.qid.toLocaleLowerCase().includes(needle) ||
+          mouthText.includes(needle)
+        );
+      })
+      .slice(0, catalogMode === "basin" ? 140 : 80);
 
     if (!visible.length) {
       els.catalogList.innerHTML = `
-        <article class="catalog-row">
+        <article class="catalog-row is-empty">
           <span>
             <strong>No matching tributaries</strong>
             <span>Try a different filter.</span>
@@ -529,14 +634,15 @@
 
     els.catalogList.innerHTML = visible
       .map((item) => {
-        const length = item.lengthKm ? km(item.lengthKm) : "length n/a";
+        const rank = tributaryRank(item);
         const disabled = item.coords ? "" : "disabled";
         return `
           <article class="catalog-row">
             <span>
               <strong>${escapeHtml(item.name)}</strong>
-              <span>${escapeHtml(length)} · ${escapeHtml(item.qid)}</span>
+              <span>${escapeHtml(catalogMetaText(item))}</span>
             </span>
+            <span class="catalog-chip is-${rank}">${escapeHtml(rankLabel(rank))}</span>
             <button type="button" data-catalog="${escapeHtml(item.qid)}" ${disabled} title="Focus ${escapeHtml(item.name)}">
               <i data-lucide="map-pin" aria-hidden="true"></i>
             </button>
@@ -548,6 +654,87 @@
     if (window.lucide) {
       window.lucide.createIcons();
     }
+  }
+
+  function loadingCatalogRow(mode) {
+    return `
+      <article class="catalog-row is-empty">
+        <span>
+          <strong>${escapeHtml(catalogModeStatus(mode))}</strong>
+          <span>Wikidata basin query</span>
+        </span>
+      </article>
+    `;
+  }
+
+  function tributaryRank(item) {
+    if (!Number.isFinite(item.lengthKm)) return "unknown";
+    return item.lengthKm >= MAJOR_TRIBUTARY_KM ? "major" : "minor";
+  }
+
+  function rankLabel(rank) {
+    if (rank === "major") return "major";
+    if (rank === "minor") return "minor";
+    return "unknown";
+  }
+
+  function markerStyle(rank) {
+    if (rank === "major") return { fill: "#2f8a5b", stroke: "#245f3a" };
+    if (rank === "minor") return { fill: "#9fca72", stroke: "#5d783e" };
+    return { fill: "#b8c2b8", stroke: "#6e776f" };
+  }
+
+  function catalogMetaText(item) {
+    const length = Number.isFinite(item.lengthKm) ? km(item.lengthKm) : "length n/a";
+    const connection = item.direct
+      ? "direct to Mureș"
+      : `via ${item.mouthNames[0] || "upstream tributary"}`;
+    return `${length} · ${rankLabel(tributaryRank(item))} · ${connection}`;
+  }
+
+  function getCatalogStats() {
+    return catalogItems.reduce(
+      (stats, item) => {
+        const rank = tributaryRank(item);
+        stats.total += 1;
+        if (item.direct) stats.direct += 1;
+        if (!item.direct) stats.upstream += 1;
+        if (item.coords) stats.withCoords += 1;
+        if (rank === "major") stats.major += 1;
+        if (rank === "minor") stats.minor += 1;
+        if (rank === "unknown") stats.unknown += 1;
+        if (Number.isFinite(item.lengthKm)) stats.knownLengthKm += item.lengthKm;
+        return stats;
+      },
+      {
+        total: 0,
+        direct: 0,
+        upstream: 0,
+        major: 0,
+        minor: 0,
+        unknown: 0,
+        withCoords: 0,
+        knownLengthKm: 0
+      }
+    );
+  }
+
+  function renderCatalogSummary(mode) {
+    const stats = getCatalogStats();
+    const totalLabel = stats.total.toLocaleString("en-US");
+
+    els.catalogTitle.textContent = catalogModeTitle(mode);
+    els.catalogCount.textContent = totalLabel;
+    els.catalogMetricLabel.textContent = mode === "basin" ? "basin tributaries" : "direct tributaries";
+    els.catalogStatus.textContent = mode === "basin" ? `${totalLabel} basin items` : `${totalLabel} direct`;
+    els.basinSummary.innerHTML = `
+      <span><strong>${stats.major.toLocaleString("en-US")}</strong> major ≥ ${MAJOR_TRIBUTARY_KM} km</span>
+      <span><strong>${stats.minor.toLocaleString("en-US")}</strong> minor &lt; ${MAJOR_TRIBUTARY_KM} km</span>
+      <span><strong>${stats.unknown.toLocaleString("en-US")}</strong> unknown length</span>
+      <span><strong>${km(stats.knownLengthKm)}</strong> known total length</span>
+      <span><strong>${stats.direct.toLocaleString("en-US")}</strong> direct branches</span>
+      <span><strong>${stats.upstream.toLocaleString("en-US")}</strong> upstream branches</span>
+    `;
   }
 
   async function loadOsmMuresGeometry() {
@@ -592,14 +779,18 @@
       groups.catalog.clearLayers();
       catalogItems = [];
       catalogMarkers = new Map();
+      catalogCache = {
+        direct: null,
+        basin: null
+      };
       renderCatalogList();
     }
 
     setStatus("Loading data");
     els.osmStatus.textContent = "Loading OSM geometry";
-    els.catalogStatus.textContent = "Loading";
+    els.catalogStatus.textContent = catalogModeStatus(catalogMode);
 
-    const outcomes = await Promise.allSettled([loadOsmMuresGeometry(), loadWikidataCatalog()]);
+    const outcomes = await Promise.allSettled([loadOsmMuresGeometry(), loadWikidataCatalog(catalogMode, force)]);
     const failed = outcomes.filter((item) => item.status === "rejected");
 
     if (failed.length === outcomes.length) {

@@ -42,7 +42,7 @@
           </div>
           <div class="metric">
             <strong id="catalogCount">0</strong>
-            <span>direct tributaries</span>
+            <span id="catalogMetricLabel">direct tributaries</span>
           </div>
         </section>
 
@@ -84,7 +84,7 @@
           </label>
           <label>
             <input type="checkbox" data-layer="catalog" checked>
-            <span>Direct tributary catalog</span>
+            <span>Tributary catalog</span>
           </label>
         </section>
 
@@ -114,9 +114,17 @@
 
         <section class="catalog-section">
           <div class="section-heading">
-            <h2>Direct Tributaries</h2>
+            <h2 id="catalogTitle">Direct Tributaries</h2>
             <span id="catalogStatus">Wikidata</span>
           </div>
+          <label class="basin-toggle" for="basinMode">
+            <input id="basinMode" type="checkbox">
+            <span>
+              <strong>Complete basin</strong>
+              <small>direct + upstream minor tributaries</small>
+            </span>
+          </label>
+          <div class="basin-summary" id="basinSummary" aria-live="polite"></div>
           <label class="search-box" for="catalogSearch">
             <i data-lucide="search" aria-hidden="true"></i>
             <input id="catalogSearch" type="search" placeholder="Filter by name">
@@ -125,7 +133,7 @@
         </section>
 
         <footer class="data-note">
-          Map tiles and river geometry use OpenStreetMap. The direct tributary catalog is loaded from Wikidata when online.
+          Map tiles and river geometry use OpenStreetMap. Tributary catalogs are loaded from Wikidata when online.
         </footer>
       </aside>
 

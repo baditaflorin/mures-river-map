@@ -11,6 +11,7 @@ Interactive online map for the Mureș River, its direct tributaries, and the dow
 - Elevation values and a profile chart for the main source-to-Danube journey stops.
 - Live OpenStreetMap geometry overlay for the Mureș river relation.
 - Live Wikidata catalog of direct tributaries whose mouth is the Mureș.
+- Optional complete-basin Wikidata loader for direct and upstream tributaries, with major/minor length summaries.
 
 ## Run Locally
 
@@ -30,6 +31,7 @@ http://localhost:4173
 
 - OpenStreetMap map tiles and Mureș relation geometry.
 - Wikidata direct tributary catalog for entities with `mouth of the watercourse = Mureș`.
+- Wikidata complete-basin catalog using recursive `mouth of the watercourse` links back to the Mureș.
 - Curated route and major tributary coordinates in `data.js` for a reliable offline fallback.
 - Elevation samples in `data.js`, based on point samples from the Open-Meteo Elevation API and rounded to whole meters.
 
