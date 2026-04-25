@@ -69,60 +69,70 @@ window.MuresData = {
       name: "Source",
       detail: "Izvoru Mureșului",
       km: 0,
+      elevationM: 908,
       coords: [46.628, 25.741]
     },
     {
       name: "Upper gorge",
       detail: "Toplița",
       km: 96,
+      elevationM: 660,
       coords: [46.925, 25.353]
     },
     {
       name: "Gurghiu reach",
       detail: "Reghin",
       km: 205,
+      elevationM: 368,
       coords: [46.776, 24.705]
     },
     {
       name: "Central basin",
       detail: "Târgu Mureș",
       km: 260,
+      elevationM: 320,
       coords: [46.546, 24.562]
     },
     {
       name: "Apuseni tributaries",
       detail: "Luduș / Arieș",
       km: 345,
+      elevationM: 275,
       coords: [46.492, 24.096]
     },
     {
       name: "Alba corridor",
       detail: "Alba Iulia",
       km: 482,
+      elevationM: 249,
       coords: [46.066, 23.570]
     },
     {
       name: "Hunedoara reach",
       detail: "Deva / Strei",
       km: 590,
+      elevationM: 192,
       coords: [45.870, 22.910]
     },
     {
       name: "Lower Mureș",
       detail: "Arad",
       km: 724,
+      elevationM: 118,
       coords: [46.176, 21.318]
     },
     {
       name: "Tisza confluence",
       detail: "near Szeged",
       km: 789,
+      elevationM: 73,
       coords: [46.252, 20.194]
     },
     {
       name: "Danube confluence",
       detail: "Tisza at Titel",
       km: 953,
+      elevationM: 75,
       coords: [45.209, 20.276]
     }
   ],

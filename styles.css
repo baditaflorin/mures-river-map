@@ -253,11 +253,92 @@ h2 {
   line-height: 1.2;
 }
 
-.journey-km {
+.journey-readout {
+  display: grid;
+  gap: 2px;
+  justify-items: end;
+}
+
+.journey-readout span,
+.journey-readout strong {
   color: var(--mures-dark);
   font-size: 0.78rem;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.journey-readout strong {
+  color: #265538;
+}
+
+.elevation-panel {
+  margin-top: 10px;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.elevation-panel .section-heading {
+  margin-bottom: 4px;
+}
+
+.elevation-panel svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.elevation-grid {
+  stroke: #d9e6df;
+  stroke-width: 1;
+}
+
+.elevation-axis {
+  fill: var(--muted);
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.elevation-area {
+  fill: url("#elevationFill");
+}
+
+.elevation-line {
+  fill: none;
+  stroke: var(--mures);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.elevation-point circle {
+  fill: #fff;
+  stroke: var(--mures-dark);
+  stroke-width: 2;
+}
+
+.elevation-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.elevation-summary span {
+  min-width: 0;
+  padding: 8px;
+  color: var(--muted);
+  background: var(--panel-strong);
+  border-radius: 8px;
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+
+.elevation-summary strong {
+  display: block;
+  color: var(--ink);
+  font-size: 0.9rem;
 }
 
 .tributary-row,
@@ -475,8 +556,9 @@ h2 {
     grid-template-columns: 36px minmax(0, 1fr);
   }
 
-  .journey-km {
+  .journey-readout {
     grid-column: 2;
     justify-self: start;
+    justify-items: start;
   }
 }

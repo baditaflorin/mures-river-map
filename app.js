@@ -56,6 +56,9 @@
     muresLength: document.getElementById("muresLength"),
     journeyList: document.getElementById("journeyList"),
     journeyStatus: document.getElementById("journeyStatus"),
+    elevationProfile: document.getElementById("elevationProfile"),
+    elevationStatus: document.getElementById("elevationStatus"),
+    elevationSummary: document.getElementById("elevationSummary"),
     tributaryList: document.getElementById("tributaryList"),
     tributaryCount: document.getElementById("tributaryCount"),
     catalogList: document.getElementById("catalogList"),
@@ -64,6 +67,10 @@
 
   function km(value) {
     return `${Math.round(value).toLocaleString("en-US")} km`;
+  }
+
+  function meters(value) {
+    return `${Math.round(value).toLocaleString("en-US")} m`;
   }
 
   function escapeHtml(value) {
@@ -189,6 +196,10 @@
 
   function renderJourneyStops() {
     const maxKm = DATA.metadata.totalToDanubeKm;
+    const sourceElevation = DATA.journeyStops[0].elevationM;
+    const lowestElevation = Math.min(...DATA.journeyStops.map((stop) => stop.elevationM));
+    const fallM = sourceElevation - lowestElevation;
+
     els.journeyList.innerHTML = DATA.journeyStops
       .map((stop, index) => {
         const percent = Math.round((stop.km / maxKm) * 100);
@@ -199,7 +210,10 @@
               <strong>${escapeHtml(stop.name)}</strong>
               <span>${escapeHtml(stop.detail)}</span>
             </span>
-            <span class="journey-km">${km(stop.km)}</span>
+            <span class="journey-readout">
+              <span>${km(stop.km)}</span>
+              <strong>${meters(stop.elevationM)}</strong>
+            </span>
           </article>
         `;
       })
@@ -213,13 +227,90 @@
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         })
-      }).bindPopup(popup(stop.name, `${stop.detail} · ${km(stop.km)} from source`));
+      }).bindPopup(
+        popup(stop.name, `${stop.detail} · ${km(stop.km)} from source · ${meters(stop.elevationM)} elevation`)
+      );
 
       marker.addTo(groups.places);
       routeBounds.extend(stop.coords);
     });
 
     els.journeyStatus.textContent = `${km(maxKm)} mapped`;
+    els.elevationStatus.textContent = `${meters(fallM)} total fall`;
+    renderElevationProfile();
+  }
+
+  function renderElevationProfile() {
+    const stops = DATA.journeyStops;
+    const width = 360;
+    const height = 150;
+    const pad = {
+      top: 16,
+      right: 18,
+      bottom: 32,
+      left: 38
+    };
+    const maxKm = DATA.metadata.totalToDanubeKm;
+    const elevations = stops.map((stop) => stop.elevationM);
+    const minElevation = Math.min(...elevations);
+    const maxElevation = Math.max(...elevations);
+    const range = Math.max(1, maxElevation - minElevation);
+    const plotWidth = width - pad.left - pad.right;
+    const plotHeight = height - pad.top - pad.bottom;
+
+    const points = stops.map((stop) => {
+      const x = pad.left + (stop.km / maxKm) * plotWidth;
+      const y = pad.top + ((maxElevation - stop.elevationM) / range) * plotHeight;
+      return { ...stop, x, y };
+    });
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x.toFixed(1)} ${point.y.toFixed(1)}`)
+      .join(" ");
+    const areaPath = `${linePath} L ${points.at(-1).x.toFixed(1)} ${height - pad.bottom} L ${points[0].x.toFixed(
+      1
+    )} ${height - pad.bottom} Z`;
+    const gridLines = [maxElevation, Math.round((maxElevation + minElevation) / 2), minElevation]
+      .map((value) => {
+        const y = pad.top + ((maxElevation - value) / range) * plotHeight;
+        return `
+          <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${width - pad.right}" y2="${y.toFixed(
+            1
+          )}" class="elevation-grid"></line>
+          <text x="8" y="${(y + 4).toFixed(1)}" class="elevation-axis">${meters(value)}</text>
+        `;
+      })
+      .join("");
+    const markers = points
+      .map(
+        (point) => `
+          <g class="elevation-point">
+            <circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="4"></circle>
+            <title>${escapeHtml(point.name)} · ${meters(point.elevationM)} · ${km(point.km)}</title>
+          </g>
+        `
+      )
+      .join("");
+
+    els.elevationProfile.innerHTML = `
+      <defs>
+        <linearGradient id="elevationFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#087f8c" stop-opacity="0.26"></stop>
+          <stop offset="100%" stop-color="#087f8c" stop-opacity="0.04"></stop>
+        </linearGradient>
+      </defs>
+      ${gridLines}
+      <path d="${areaPath}" class="elevation-area"></path>
+      <path d="${linePath}" class="elevation-line"></path>
+      ${markers}
+      <text x="${pad.left}" y="${height - 8}" class="elevation-axis">source</text>
+      <text x="${width - pad.right}" y="${height - 8}" text-anchor="end" class="elevation-axis">Danube</text>
+    `;
+
+    els.elevationSummary.innerHTML = `
+      <span><strong>${meters(maxElevation)}</strong> highest sampled point</span>
+      <span><strong>${meters(minElevation)}</strong> lowest sampled point</span>
+    `;
   }
 
   function renderTributaries() {
