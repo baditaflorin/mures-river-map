@@ -388,6 +388,58 @@ h2 {
   font-size: 0.72rem;
 }
 
+.basin-toggle.is-disabled {
+  color: var(--muted);
+  background: #f6f8f6;
+  cursor: not-allowed;
+}
+
+.basin-toggle.is-disabled input {
+  cursor: not-allowed;
+}
+
+.shape-legend {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.shape-legend span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 7px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.legend-swatch {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.legend-swatch.is-main {
+  background: var(--mures);
+}
+
+.legend-swatch.is-direct {
+  background: #2f8a5b;
+}
+
+.legend-swatch.is-descendant {
+  background: #b08b2e;
+}
+
 .basin-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

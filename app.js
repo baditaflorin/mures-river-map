@@ -3,6 +3,7 @@
   const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
   const WIKIDATA_ENDPOINT = "https://query.wikidata.org/sparql";
   const MAJOR_TRIBUTARY_KM = 50;
+  const BASIN_SHAPE_BATCH_SIZE = 220;
 
   const map = L.map("map", {
     zoomControl: false,
@@ -39,6 +40,7 @@
     danube: L.layerGroup().addTo(map),
     tributaries: L.layerGroup().addTo(map),
     catalog: L.layerGroup().addTo(map),
+    basinShapes: L.layerGroup(),
     places: L.layerGroup().addTo(map),
     osm: L.layerGroup().addTo(map)
   };
@@ -53,6 +55,8 @@
     direct: null,
     basin: null
   };
+  let basinShapeCache = null;
+  let basinShapeLoading = false;
 
   const els = {
     networkStatus: document.getElementById("networkStatus"),
@@ -72,6 +76,9 @@
     tributaryList: document.getElementById("tributaryList"),
     tributaryCount: document.getElementById("tributaryCount"),
     basinMode: document.getElementById("basinMode"),
+    basinShapesControl: document.getElementById("basinShapesControl"),
+    basinShapesMode: document.getElementById("basinShapesMode"),
+    basinShapeStatus: document.getElementById("basinShapeStatus"),
     basinSummary: document.getElementById("basinSummary"),
     catalogList: document.getElementById("catalogList"),
     catalogSearch: document.getElementById("catalogSearch")
@@ -461,6 +468,7 @@
       els.catalogTitle.textContent = catalogModeTitle(catalogMode);
       els.catalogStatus.textContent = catalogModeStatus(catalogMode);
       els.catalogList.innerHTML = loadingCatalogRow(catalogMode);
+      updateBasinShapeControl();
 
       loadWikidataCatalog(catalogMode).catch((error) => {
         console.warn(error);
@@ -473,6 +481,22 @@
             </span>
           </article>
         `;
+      });
+    });
+
+    els.basinShapesMode.addEventListener("change", () => {
+      if (!els.basinShapesMode.checked) {
+        setLayerVisible(groups.basinShapes, false);
+        updateBasinShapeControl();
+        return;
+      }
+
+      setLayerVisible(groups.basinShapes, true);
+      loadBasinShapeGeometry().catch((error) => {
+        console.warn(error);
+        els.basinShapesMode.checked = false;
+        setLayerVisible(groups.basinShapes, false);
+        els.basinShapeStatus.textContent = "shape load failed";
       });
     });
   }
@@ -521,6 +545,27 @@
 
   function catalogModeStatus(mode) {
     return mode === "basin" ? "Loading basin" : "Loading direct";
+  }
+
+  function updateBasinShapeControl() {
+    const basinActive = catalogMode === "basin";
+    els.basinShapesMode.disabled = !basinActive || basinShapeLoading;
+    els.basinShapesControl.classList.toggle("is-disabled", els.basinShapesMode.disabled);
+
+    if (!basinActive) {
+      els.basinShapesMode.checked = false;
+      setLayerVisible(groups.basinShapes, false);
+      els.basinShapeStatus.textContent = "enable complete basin first";
+      return;
+    }
+
+    if (basinShapeLoading) return;
+    if (basinShapeCache) {
+      els.basinShapeStatus.textContent = shapeStatusText(basinShapeCache);
+      return;
+    }
+
+    els.basinShapeStatus.textContent = "optional OSM geometry load";
   }
 
   function catalogQuery(mode) {
@@ -634,6 +679,7 @@
     drawCatalogMarkers();
     renderCatalogList();
     renderCatalogSummary(mode);
+    updateBasinShapeControl();
   }
 
   function drawCatalogMarkers() {
@@ -795,6 +841,209 @@
     `;
   }
 
+  async function loadBasinShapeGeometry() {
+    if (basinShapeCache) {
+      setLayerVisible(groups.basinShapes, true);
+      els.basinShapeStatus.textContent = shapeStatusText(basinShapeCache);
+      return;
+    }
+
+    if (catalogMode !== "basin") {
+      els.basinMode.checked = true;
+      catalogMode = "basin";
+      await loadWikidataCatalog("basin");
+    }
+
+    const basinItems = catalogCache.basin || catalogItems;
+    const qidToItem = new Map(basinItems.map((item) => [item.qid, item]));
+    const qids = Array.from(qidToItem.keys());
+    const batches = chunk(qids, BASIN_SHAPE_BATCH_SIZE);
+    const stats = {
+      direct: new Set(),
+      descendant: new Set(),
+      segments: 0,
+      km: 0,
+      relations: 0,
+      ways: 0,
+      batches: batches.length,
+      failedBatches: 0
+    };
+
+    groups.basinShapes.clearLayers();
+    basinShapeLoading = true;
+    updateBasinShapeControl();
+
+    for (const [index, batch] of batches.entries()) {
+      els.basinShapeStatus.textContent = `loading shapes ${index + 1}/${batches.length}`;
+      try {
+        const data = await fetchOverpass(basinShapeQuery(batch));
+        drawBasinShapeBatch(data, qidToItem, stats);
+      } catch (error) {
+        console.warn(error);
+        stats.failedBatches = batches.length - index;
+        break;
+      }
+
+      if (index < batches.length - 1) {
+        await delay(900);
+      }
+    }
+
+    basinShapeCache = {
+      direct: stats.direct.size,
+      descendant: stats.descendant.size,
+      segments: stats.segments,
+      km: stats.km,
+      relations: stats.relations,
+      ways: stats.ways,
+      failedBatches: stats.failedBatches
+    };
+    basinShapeLoading = false;
+    els.basinShapesMode.checked = true;
+    setLayerVisible(groups.basinShapes, true);
+    els.lengthStatus.textContent = `Basin shapes: ${shapeStatusText(basinShapeCache)}`;
+    updateBasinShapeControl();
+  }
+
+  function basinShapeQuery(qids) {
+    const pattern = qids.join("|");
+    return `
+      [out:json][timeout:90];
+      (
+        relation["waterway"]["wikidata"~"^(${pattern})$"];
+        way["waterway"]["wikidata"~"^(${pattern})$"];
+      )->.matched;
+      (
+        .matched;
+        way(r.matched);
+      );
+      out body geom;
+    `;
+  }
+
+  async function fetchOverpass(query) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const response = await fetch(OVERPASS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"
+        },
+        body: new URLSearchParams({ data: query })
+      });
+
+      if (response.ok) {
+        return response.json();
+      }
+
+      if ((response.status === 429 || response.status === 504) && attempt < 3) {
+        await delay((attempt + 1) * 4500);
+        continue;
+      }
+
+      throw new Error(`Overpass request failed with ${response.status}`);
+    }
+
+    throw new Error("Overpass request failed");
+  }
+
+  function drawBasinShapeBatch(data, qidToItem, stats) {
+    const relations = data.elements.filter((element) => element.type === "relation" && element.tags?.wikidata);
+    const ways = data.elements.filter((element) => element.type === "way" && element.geometry?.length > 1);
+    const waysById = new Map(ways.map((way) => [way.id, way]));
+    const drawn = new Set();
+
+    relations.forEach((relation) => {
+      const item = qidToItem.get(relation.tags.wikidata);
+      if (!item) return;
+
+      const memberWays = relation.members
+        ?.filter((member) => member.type === "way")
+        .map((member) => waysById.get(member.ref))
+        .filter((way) => way?.geometry?.length > 1);
+
+      if (!memberWays?.length) return;
+
+      stats.relations += 1;
+      memberWays.forEach((way) => {
+        const key = `${item.qid}:${way.id}`;
+        if (drawn.has(key)) return;
+        drawn.add(key);
+        addBasinShapeLine(item, way.geometry, `OSM relation ${relation.id}`, stats);
+      });
+    });
+
+    ways.forEach((way) => {
+      const item = qidToItem.get(way.tags?.wikidata);
+      if (!item) return;
+
+      const key = `${item.qid}:${way.id}`;
+      if (drawn.has(key)) return;
+      drawn.add(key);
+      stats.ways += 1;
+      addBasinShapeLine(item, way.geometry, `OSM way ${way.id}`, stats);
+    });
+  }
+
+  function addBasinShapeLine(item, geometry, source, stats) {
+    const points = geometry.map((point) => [point.lat, point.lon]);
+    const style = basinShapeStyle(item);
+    const segmentKm = lineLengthKm(points);
+    const line = L.polyline(points, style).bindPopup(
+      popup(item.name, `${catalogMetaText(item)} · ${km(segmentKm)} mapped · ${source}`)
+    );
+
+    line.on("mouseover", () => line.setStyle({ weight: style.weight + 1.5, opacity: 0.96 }));
+    line.on("mouseout", () => line.setStyle(style));
+    line.addTo(groups.basinShapes);
+
+    stats.segments += 1;
+    stats.km += segmentKm;
+    if (item.direct) {
+      stats.direct.add(item.qid);
+    } else {
+      stats.descendant.add(item.qid);
+    }
+  }
+
+  function basinShapeStyle(item) {
+    if (item.direct) {
+      return {
+        color: "#2f8a5b",
+        weight: 2.6,
+        opacity: 0.72,
+        lineCap: "round",
+        lineJoin: "round"
+      };
+    }
+
+    return {
+      color: "#b08b2e",
+      weight: 1.7,
+      opacity: 0.58,
+      lineCap: "round",
+      lineJoin: "round"
+    };
+  }
+
+  function shapeStatusText(stats) {
+    const partial = stats.failedBatches ? "partial, " : "";
+    return `${partial}${stats.direct} direct, ${stats.descendant} descendants, ${stats.segments} shapes, ${km(
+      stats.km
+    )}`;
+  }
+
+  function delay(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  function chunk(items, size) {
+    const chunks = [];
+    for (let index = 0; index < items.length; index += size) {
+      chunks.push(items.slice(index, index + size));
+    }
+    return chunks;
+  }
+
   async function loadOsmMuresGeometry() {
     const query = `
       [out:json][timeout:60];
@@ -916,13 +1165,17 @@
     if (force) {
       groups.osm.clearLayers();
       groups.catalog.clearLayers();
+      groups.basinShapes.clearLayers();
       drawFallbackTributaries();
       catalogItems = [];
       catalogMarkers = new Map();
+      basinShapeCache = null;
+      basinShapeLoading = false;
       catalogCache = {
         direct: null,
         basin: null
       };
+      updateBasinShapeControl();
       renderCatalogList();
     }
 

@@ -13,6 +13,7 @@ Interactive online map for the Mureș River, its direct tributaries, and the dow
 - Live OpenStreetMap geometry overlay for the Mureș river relation.
 - Live Wikidata catalog of direct tributaries whose mouth is the Mureș.
 - Optional complete-basin Wikidata loader for direct and upstream tributaries, with major/minor length summaries.
+- Optional OSM shape loader for the complete basin, colored by Mureș, direct tributary, and upstream descendant levels.
 
 ## Run Locally
 

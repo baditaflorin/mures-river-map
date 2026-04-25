@@ -124,6 +124,18 @@
               <small>direct + upstream minor tributaries</small>
             </span>
           </label>
+          <label class="basin-toggle shape-toggle is-disabled" for="basinShapesMode" id="basinShapesControl">
+            <input id="basinShapesMode" type="checkbox" disabled>
+            <span>
+              <strong>Load basin shapes</strong>
+              <small id="basinShapeStatus">enable complete basin first</small>
+            </span>
+          </label>
+          <div class="shape-legend" aria-label="Basin shape colors">
+            <span><i class="legend-swatch is-main"></i>Mureș</span>
+            <span><i class="legend-swatch is-direct"></i>direct tributary</span>
+            <span><i class="legend-swatch is-descendant"></i>upstream descendant</span>
+          </div>
           <div class="basin-summary" id="basinSummary" aria-live="polite"></div>
           <label class="search-box" for="catalogSearch">
             <i data-lucide="search" aria-hidden="true"></i>
