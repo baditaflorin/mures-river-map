@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Interactive map of the Mures River, its tributaries, and the downstream route through the Tisza to the Danube."
+    >
+    <title>Mureș River Map</title>
+    <link rel="preconnect" href="https://tile.openstreetmap.org">
+    <link rel="preconnect" href="https://unpkg.com">
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    >
+    <link rel="stylesheet" href="styles.css">
+    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script defer src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+    <script defer src="data.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel" aria-label="River information">
+        <header class="brand">
+          <div>
+            <p class="eyebrow">Online river map</p>
+            <h1>Mureș River</h1>
+          </div>
+          <span class="status-pill" id="networkStatus">Loading data</span>
+        </header>
+
+        <section class="metrics" aria-label="River length summary">
+          <div class="metric">
+            <strong id="muresLength">789 km</strong>
+            <span>Mureș length</span>
+          </div>
+          <div class="metric">
+            <strong id="totalLength">953 km</strong>
+            <span>to Danube via Tisza</span>
+          </div>
+          <div class="metric">
+            <strong id="catalogCount">0</strong>
+            <span>direct tributaries</span>
+          </div>
+        </section>
+
+        <div class="actions" aria-label="Map actions">
+          <button id="fitRoute" type="button" title="Fit the complete route">
+            <i data-lucide="map-pinned" aria-hidden="true"></i>
+            <span>Fit</span>
+          </button>
+          <button id="focusSource" type="button" title="Go to the source">
+            <i data-lucide="mountain" aria-hidden="true"></i>
+            <span>Source</span>
+          </button>
+          <button id="focusMouth" type="button" title="Go to the Tisza confluence">
+            <i data-lucide="waves" aria-hidden="true"></i>
+            <span>Tisza</span>
+          </button>
+          <button id="reloadData" type="button" title="Reload online OSM and Wikidata layers">
+            <i data-lucide="refresh-cw" aria-hidden="true"></i>
+            <span>Reload</span>
+          </button>
+        </div>
+
+        <section class="layer-toggles" aria-label="Map layers">
+          <label>
+            <input type="checkbox" data-layer="mures" checked>
+            <span>Mureș route</span>
+          </label>
+          <label>
+            <input type="checkbox" data-layer="continuation" checked>
+            <span>Tisza connection</span>
+          </label>
+          <label>
+            <input type="checkbox" data-layer="danube" checked>
+            <span>Danube context</span>
+          </label>
+          <label>
+            <input type="checkbox" data-layer="tributaries" checked>
+            <span>Major tributaries</span>
+          </label>
+          <label>
+            <input type="checkbox" data-layer="catalog" checked>
+            <span>Direct tributary catalog</span>
+          </label>
+        </section>
+
+        <section class="flow-section">
+          <div class="section-heading">
+            <h2>Flow Evolution</h2>
+            <span id="journeyStatus">source to Danube</span>
+          </div>
+          <div class="journey-list" id="journeyList"></div>
+        </section>
+
+        <section class="tributary-section">
+          <div class="section-heading">
+            <h2>Major Tributaries</h2>
+            <span id="tributaryCount">0 shown</span>
+          </div>
+          <div class="tributary-list" id="tributaryList"></div>
+        </section>
+
+        <section class="catalog-section">
+          <div class="section-heading">
+            <h2>Direct Tributaries</h2>
+            <span id="catalogStatus">Wikidata</span>
+          </div>
+          <label class="search-box" for="catalogSearch">
+            <i data-lucide="search" aria-hidden="true"></i>
+            <input id="catalogSearch" type="search" placeholder="Filter by name">
+          </label>
+          <div class="catalog-list" id="catalogList"></div>
+        </section>
+
+        <footer class="data-note">
+          Map tiles and river geometry use OpenStreetMap. The direct tributary catalog is loaded from Wikidata when online.
+        </footer>
+      </aside>
+
+      <main class="map-area">
+        <div id="map" aria-label="Interactive map"></div>
+        <div class="map-hud" aria-live="polite">
+          <span id="osmStatus">Curated geometry ready</span>
+          <span id="lengthStatus">Approximate distances</span>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>
